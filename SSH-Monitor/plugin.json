@@ -1,0 +1,17 @@
+{
+  "id": "sshMonitor",
+  "name": "SSH Monitor",
+  "description": "Monitor active SSH, SFTP, FTP, and Yazi VFS connections with hostname resolution",
+  "version": "1.6.0",
+  "author": "Deppes",
+  "icon": "cloud_sync",
+  "type": "widget",
+  "firstParty": false,
+  "component": "./SSHMonitorWidget.qml",
+  "settings": "./SSHMonitorSettings.qml",
+  "permissions": [
+    "settings_read",
+    "settings_write",
+    "process_read"
+  ]
+}

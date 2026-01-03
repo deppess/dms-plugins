@@ -1,0 +1,17 @@
+{
+  "id": "githubHeatmap",
+  "name": "GitHub Heatmap",
+  "description": "Display weekly GitHub contribution heatmap with color-coded activity levels",
+  "version": "1.0.0",
+  "author": "Deppes",
+  "icon": "code",
+  "type": "widget",
+  "firstParty": false,
+  "component": "./HeatMapWidget.qml",
+  "settings": "./HeatMapSettings.qml",
+  "permissions": [
+    "settings_read",
+    "settings_write",
+    "process_read"
+  ]
+}
