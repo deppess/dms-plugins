@@ -47,12 +47,6 @@ set gvfs_ssh_procs (pgrep -af 'ssh.*gvfsd-sftp' 2>/dev/null)
 # Combine all processes
 set all_procs $ssh_procs $sftp_procs $ftp_procs $gvfs_procs $gvfs_ssh_procs
 
-# No connections
-if test (count $all_procs) -eq 0
-    echo "DISCONNECTED"
-    exit 0
-end
-
 # Parse SSH config
 set -l config_map
 if test -f ~/.ssh/config
