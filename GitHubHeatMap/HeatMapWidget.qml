@@ -10,8 +10,8 @@ PluginComponent {
     id: root
 
     // Popout dimensions
-    popoutWidth: 450
-    popoutHeight: 650
+    popoutWidth: 280
+    popoutHeight: 340
 
     // Icons
     readonly property string iconBar: "commit"
@@ -27,6 +27,7 @@ PluginComponent {
 
     // State - Always 7 items for fixed width
     property var contributions: []
+    property var gridData: []  // 4 weeks of data for calendar grid
     property string totalContributions: "0"
     property bool isError: false
     property bool isLoading: false
@@ -83,6 +84,23 @@ PluginComponent {
         contributions = placeholders
         totalContributions = "0"
         isError = false
+
+        // Initialize grid placeholders (8 weeks × 7 days)
+        const gridPlaceholders = []
+        for (let week = 0; week < 8; week++) {
+            const weekData = []
+            for (let day = 0; day < 7; day++) {
+                weekData.push({
+                    weekday: day,
+                    weekdayName: days[day],
+                    date: "--/--",
+                    count: 0,
+                    color: Theme.surfaceContainer
+                })
+            }
+            gridPlaceholders.push(weekData)
+        }
+        gridData = gridPlaceholders
     }
 
     // Shell escape function for security
@@ -150,9 +168,19 @@ set COLOR_2 "#006d32"
 set COLOR_3 "#26a641"
 set COLOR_4 "#39d353"
 
-# Calculate date range (last 7 days including today)
+# Calculate date range (4 weeks, aligned to Sunday)
 set today (date +%Y-%m-%d)
-set start_date (date -d "$today -6 days" +%Y-%m-%d)
+set today_dow (date -d "$today" +%u)  # 1=Mon, 7=Sun
+
+# Find the Sunday of current week
+if test "$today_dow" = "7"
+    set current_sunday "$today"
+else
+    set current_sunday (date -d "$today -$today_dow days" +%Y-%m-%d)
+end
+
+# Go back 7 more weeks to get 8 weeks total (starting Sunday)
+set start_date (date -d "$current_sunday -49 days" +%Y-%m-%d)
 set from_date "$start_date"T00:00:00Z
 set to_date "$today"T23:59:59Z
 
@@ -213,12 +241,14 @@ while test $attempt -le $MAX_RETRIES
             # Success! Process the data
             set weeks_data (echo "$body" | jq -r '.data.user.contributionsCollection.contributionCalendar.weeks')
 
-            # Initialize contribution array
-            set -l contributions_json "["
-            set day_count 0
+            # Initialize arrays
+            set -l grid_json "["
+            set -l pill_json "["
+            set -l all_days
             set total_contributions 0
+            set week_count 0
 
-            # Parse each day's data
+            # Collect all days with their data
             for week in (echo "$weeks_data" | jq -c '.[]')
                 for day in (echo "$week" | jq -c '.contributionDays[]')
                     set date (echo "$day" | jq -r '.date')
@@ -244,31 +274,96 @@ while test $attempt -le $MAX_RETRIES
                             set color $COLOR_4
                         end
 
-                        # Convert weekday number to name
+                        set total_contributions (math "$total_contributions + $count")
+
+                        # Store day data
+                        set formatted_date (date -d "$date" +%m/%d)
                         set weekday_names "Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"
                         set weekday_index (math "$weekday + 1")
                         set weekday_name $weekday_names[$weekday_index]
 
-                        # Format date as "MM/DD"
-                        set formatted_date (date -d "$date" +%m/%d)
-
-                        # Add to JSON array
-                        if test $day_count -gt 0
-                            set contributions_json "$contributions_json,"
-                        end
-
-                        set contributions_json "$contributions_json{\\\"weekday\\\":\\\"$weekday_name\\\",\\\"date\\\":\\\"$formatted_date\\\",\\\"count\\\":$count,\\\"color\\\":\\\"$color\\\"}"
-
-                        set total_contributions (math "$total_contributions + $count")
-                        set day_count (math "$day_count + 1")
+                        # Add to all_days array (will be sorted by date)
+                        set -a all_days "$date|$weekday|$count|$color|$formatted_date|$weekday_name"
                     end
                 end
             end
 
-            set contributions_json "$contributions_json]"
+            # Sort days by date
+            set sorted_days (printf '%s\n' $all_days | sort)
+
+            # Build grid data (organized by week columns)
+            # Each week is Sun(0) through Sat(6)
+            set -l current_week "["
+            set -l current_week_day -1
+            set -l first_week 1
+            set -l first_day_in_week 1
+
+            for day_data in $sorted_days
+                set parts (string split "|" $day_data)
+                set date $parts[1]
+                set weekday $parts[2]
+                set count $parts[3]
+                set color $parts[4]
+                set formatted_date $parts[5]
+                set weekday_name $parts[6]
+
+                # If we hit Sunday (weekday 0) and it's not the first day, start new week
+                if test "$weekday" = "0"; and test $first_day_in_week -eq 0
+                    # Close previous week
+                    set current_week "$current_week]"
+                    if test $first_week -eq 1
+                        set grid_json "$grid_json$current_week"
+                        set first_week 0
+                    else
+                        set grid_json "$grid_json,$current_week"
+                    end
+                    set current_week "["
+                    set first_day_in_week 1
+                end
+
+                # Add day to current week
+                set day_obj "{\\\"weekday\\\":$weekday,\\\"weekdayName\\\":\\\"$weekday_name\\\",\\\"date\\\":\\\"$formatted_date\\\",\\\"count\\\":$count,\\\"color\\\":\\\"$color\\\"}"
+
+                if test $first_day_in_week -eq 1
+                    set current_week "$current_week$day_obj"
+                    set first_day_in_week 0
+                else
+                    set current_week "$current_week,$day_obj"
+                end
+            end
+
+            # Close last week
+            set current_week "$current_week]"
+            if test $first_week -eq 1
+                set grid_json "$grid_json$current_week"
+            else
+                set grid_json "$grid_json,$current_week"
+            end
+            set grid_json "$grid_json]"
+
+            # Build pill data (last 7 days)
+            set day_count (count $sorted_days)
+            set pill_start (math "max(1, $day_count - 6)")
+            set pill_count 0
+
+            for i in (seq $pill_start $day_count)
+                set day_data $sorted_days[$i]
+                set parts (string split "|" $day_data)
+                set weekday_name $parts[6]
+                set formatted_date $parts[5]
+                set count $parts[3]
+                set color $parts[4]
+
+                if test $pill_count -gt 0
+                    set pill_json "$pill_json,"
+                end
+                set pill_json "$pill_json{\\\"weekday\\\":\\\"$weekday_name\\\",\\\"date\\\":\\\"$formatted_date\\\",\\\"count\\\":$count,\\\"color\\\":\\\"$color\\\"}"
+                set pill_count (math "$pill_count + 1")
+            end
+            set pill_json "$pill_json]"
 
             # Output final JSON
-            printf '{"contributions":%s,"total":%d,"error":false}\n' "$contributions_json" $total_contributions
+            printf '{"contributions":%s,"gridData":%s,"total":%d,"error":false}\n' "$pill_json" "$grid_json" $total_contributions
             exit 0
         end
     end
@@ -324,12 +419,12 @@ exit 1
                         return
                     }
 
-                    console.log("GitHub: Successfully fetched", result.contributions.length, "days")
+                    console.log("GitHub: Successfully fetched", result.contributions.length, "days for pill,", result.gridData.length, "weeks for grid")
 
                     root.isError = false
                     root.isLoading = false
 
-                    // Ensure we always have exactly 7 items
+                    // Ensure we always have exactly 7 items for pill
                     let newContributions = result.contributions || []
 
                     // Pad with placeholders if less than 7
@@ -347,6 +442,44 @@ exit 1
 
                     root.contributions = newContributions
                     root.totalContributions = result.total.toString()
+
+                    // Process grid data - ensure 4 weeks with 7 days each
+                    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+                    let newGridData = result.gridData || []
+
+                    // Pad to 8 weeks if needed
+                    while (newGridData.length < 8) {
+                        const emptyWeek = []
+                        for (let d = 0; d < 7; d++) {
+                            emptyWeek.push({
+                                weekday: d,
+                                weekdayName: days[d],
+                                date: "--/--",
+                                count: 0,
+                                color: Theme.surfaceContainer
+                            })
+                        }
+                        newGridData.unshift(emptyWeek)  // Add empty weeks at start (older)
+                    }
+
+                    // Ensure each week has 7 days
+                    for (let w = 0; w < newGridData.length; w++) {
+                        while (newGridData[w].length < 7) {
+                            const missingDay = newGridData[w].length
+                            newGridData[w].push({
+                                weekday: missingDay,
+                                weekdayName: days[missingDay],
+                                date: "--/--",
+                                count: 0,
+                                color: Theme.surfaceContainer
+                            })
+                        }
+                    }
+
+                    // Take only last 8 weeks
+                    newGridData = newGridData.slice(-8)
+
+                    root.gridData = newGridData
 
                     if (root.isManualRefresh) {
                         notifySuccess.running = true
@@ -487,9 +620,8 @@ exit 1
             headerText: "GitHub Contributions"
             detailsText: {
                 if (root.isError) return root.errorMessage
-                if (root.isLoading) return "Loading contributions..."
-                const total = root.totalContributions
-                return "Total: " + total + " contribution" + (total === "1" ? "" : "s") + " this week"
+                if (root.isLoading) return "Loading..."
+                return root.totalContributions + " contributions (8 weeks)"
             }
             showCloseButton: false
 
@@ -530,7 +662,7 @@ exit 1
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                root.isManualRefresh = true  // Manual refresh via button
+                                root.isManualRefresh = true
                                 root.refreshHeatmap()
                             }
                         }
@@ -599,113 +731,96 @@ exit 1
                     }
                 }
 
-                // Compact rows contribution view
-                Column {
+                // Calendar grid view
+                Row {
                     visible: !root.isError
-                    width: parent.width
-                    spacing: Theme.spacingXS
+                    spacing: 6
+                    anchors.horizontalCenter: parent.horizontalCenter
 
-                    Repeater {
-                        model: root.contributions
+                    // Day labels column
+                    Column {
+                        spacing: 3
+                        topPadding: 2
 
-                        Row {
-                            width: parent.width
-                            height: 36
-                            spacing: Theme.spacingM
+                        Repeater {
+                            model: ["S", "M", "T", "W", "T", "F", "S"]
 
-                            // Left padding
-                            Item { width: Theme.spacingM; height: 1 }
-
-                            // Colored square
-                            Rectangle {
-                                width: 16
-                                height: 16
-                                radius: 3
-                                color: modelData.color
-                                border.color: Qt.darker(modelData.color, 1.2)
-                                border.width: 1
-                                anchors.verticalCenter: parent.verticalCenter
-
-                                Behavior on color {
-                                    ColorAnimation { duration: 300 }
-                                }
-                            }
-
-                            // Day name and date
-                            Row {
-                                spacing: Theme.spacingS
-                                anchors.verticalCenter: parent.verticalCenter
-
-                                StyledText {
-                                    text: modelData.weekday
-                                    font.pixelSize: Theme.fontSizeMedium
-                                    font.weight: Font.Bold
-                                    color: Theme.surfaceText
-                                    width: 50
-                                }
-
-                                StyledText {
-                                    text: modelData.date
-                                    font.pixelSize: Theme.fontSizeSmall
-                                    color: Theme.surfaceVariantText
-                                }
-                            }
-
-                            // Spacer
-                            Item {
-                                width: parent.width - 200
-                                height: 1
-                            }
-
-                            // Count
                             StyledText {
-                                text: modelData.count.toString()
-                                font.pixelSize: Theme.fontSizeMedium
-                                font.weight: Font.Bold
-                                color: modelData.count > 0 ? Theme.primary : Theme.surfaceVariantText
+                                text: modelData
+                                font.pixelSize: 10
+                                color: Theme.surfaceVariantText
+                                width: 14
+                                height: 26
                                 horizontalAlignment: Text.AlignRight
-                                width: 30
-                                anchors.verticalCenter: parent.verticalCenter
+                                verticalAlignment: Text.AlignVCenter
                             }
-
-                            // Right padding
-                            Item { width: Theme.spacingM; height: 1 }
                         }
                     }
-                }
 
-                // Total summary
-                StyledRect {
-                    visible: !root.isError
-                    width: parent.width
-                    height: 40
-                    color: Theme.surfaceContainerHigh
-                    radius: Theme.cornerRadius
-
+                    // Grid of contribution squares (8 weeks × 7 days)
                     Row {
-                        anchors.centerIn: parent
-                        spacing: Theme.spacingS
+                        spacing: 3
 
-                        StyledText {
-                            text: "Total:"
-                            font.pixelSize: Theme.fontSizeMedium
-                            color: Theme.surfaceVariantText
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
+                        Repeater {
+                            model: root.gridData  // 8 weeks
 
-                        StyledText {
-                            text: root.totalContributions
-                            font.pixelSize: Theme.fontSizeMedium
-                            font.weight: Font.Bold
-                            color: Theme.primary
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
+                            Column {
+                                spacing: 3
+                                required property var modelData
+                                required property int index
 
-                        StyledText {
-                            text: root.totalContributions === "1" ? "contribution" : "contributions"
-                            font.pixelSize: Theme.fontSizeMedium
-                            color: Theme.surfaceVariantText
-                            anchors.verticalCenter: parent.verticalCenter
+                                Repeater {
+                                    model: modelData  // 7 days per week
+
+                                    Rectangle {
+                                        width: 26
+                                        height: 26
+                                        radius: 4
+                                        color: modelData.color || Theme.surfaceContainer
+                                        border.color: Qt.darker(color, 1.15)
+                                        border.width: 1
+
+                                        required property var modelData
+
+                                        opacity: root.isLoading ? 0.6 : 1.0
+
+                                        Behavior on opacity {
+                                            NumberAnimation { duration: 200 }
+                                        }
+
+                                        Behavior on color {
+                                            ColorAnimation { duration: 300 }
+                                        }
+
+                                        // Tooltip on hover
+                                        MouseArea {
+                                            id: cellMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                        }
+
+                                        // Tooltip popup
+                                        Rectangle {
+                                            visible: cellMouse.containsMouse && modelData.date !== "--/--"
+                                            x: -25
+                                            y: -30
+                                            width: tooltipText.implicitWidth + 12
+                                            height: tooltipText.implicitHeight + 8
+                                            color: Theme.surfaceContainerHighest
+                                            radius: 4
+                                            z: 100
+
+                                            StyledText {
+                                                id: tooltipText
+                                                anchors.centerIn: parent
+                                                text: modelData.date + ": " + modelData.count
+                                                font.pixelSize: 11
+                                                color: Theme.surfaceText
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -714,27 +829,15 @@ exit 1
                 StyledRect {
                     visible: !root.isError && root.totalContributions === "0"
                     width: parent.width
-                    height: 80
+                    height: 50
                     color: Theme.surfaceContainerHigh
                     radius: Theme.cornerRadius
 
-                    Column {
+                    StyledText {
                         anchors.centerIn: parent
-                        spacing: Theme.spacingS
-
-                        DankIcon {
-                            name: root.iconSuccess
-                            color: Theme.primary
-                            size: Theme.iconSize * 1.5
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
-
-                        StyledText {
-                            text: "No contributions this week"
-                            color: Theme.surfaceVariantText
-                            font.pixelSize: Theme.fontSizeSmall
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
+                        text: "No contributions yet"
+                        color: Theme.surfaceVariantText
+                        font.pixelSize: Theme.fontSizeSmall
                     }
                 }
             }

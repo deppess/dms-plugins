@@ -1,0 +1,12 @@
+{
+    "id": "screenshotToggle",
+    "name": "Screenshot Toggle",
+    "description": "Toggle niri screenshot mode between disk save and clipboard only",
+    "version": "1.0.0",
+    "author": "Deppes",
+    "icon": "screenshot_monitor",
+    "type": "widget",
+    "component": "./ScreenshotToggleWidget.qml",
+    "capabilities": ["control-center"],
+    "permissions": ["process"]
+}
