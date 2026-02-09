@@ -7,7 +7,7 @@
     "path": "ScreenShot-Toggle",
     "author": "Deppes",
     "description": "Toggle niri screenshot mode between disk save and clipboard only",
-    "dependencies": [],
+    "dependencies": ["fish"],
     "compositors": ["niri"],
     "distro": ["arch"],
     "screenshot": "https://raw.githubusercontent.com/boutabong/dms-plugins/main/screenshots/screenshot-toggle-control-center.png"

@@ -7,7 +7,7 @@
     "path": "GitHubHeatMap",
     "author": "Deppes",
     "description": "Display weekly GitHub contribution heatmap with color-coded activity levels",
-    "dependencies": ["curl", "jq", "fish"],
+    "dependencies": ["curl", "jq", "fish", "libnotify", "xdg-utils"],
     "compositors": ["niri"],
     "distro": ["arch"],
     "screenshot": "https://raw.githubusercontent.com/boutabong/dms-plugins/main/screenshots/GitHubHeatMap-popout.png"
