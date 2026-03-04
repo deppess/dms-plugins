@@ -75,7 +75,7 @@ Toggle niri screenshot mode between saving to disk and clipboard only.
 - Automatic niri config reload
 
 **Dependencies**
-- fish
+- bash
 
 ---
 
@@ -83,7 +83,6 @@ Toggle niri screenshot mode between saving to disk and clipboard only.
 
 - Compositor: niri
 - Distribution: Arch Linux
-- Shell: fish
 
 ## Installation
 

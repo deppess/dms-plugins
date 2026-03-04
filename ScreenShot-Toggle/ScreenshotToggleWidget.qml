@@ -24,7 +24,7 @@ PluginComponent {
 
     Process {
         id: checkProcess
-        command: ["/usr/bin/env", "fish", "-c", "grep -q '^screenshot-path' ~/.config/niri/screenshot.kdl"]
+        command: ["/bin/bash", "-c", "grep -q '^screenshot-path' ~/.config/niri/screenshot.kdl"]
         running: false
         onExited: (exitCode, exitStatus) => {
             root.isDiskMode = (exitCode === 0)
@@ -34,9 +34,9 @@ PluginComponent {
 
     Process {
         id: toggleProcess
-        command: ["/usr/bin/env", "fish", "-c", root.isDiskMode
-            ? "sed -i 's/^screenshot-path/\\/\\/screenshot-path/' ~/.config/niri/screenshot.kdl; and niri msg action reload-config"
-            : "sed -i 's/^\\/\\/screenshot-path/screenshot-path/' ~/.config/niri/screenshot.kdl; and niri msg action reload-config"]
+        command: ["/bin/bash", "-c", root.isDiskMode
+            ? "sed -i 's/^screenshot-path/\\/\\/screenshot-path/' ~/.config/niri/screenshot.kdl && niri msg action reload-config"
+            : "sed -i 's/^\\/\\/screenshot-path/screenshot-path/' ~/.config/niri/screenshot.kdl && niri msg action reload-config"]
         running: false
         onExited: (exitCode, exitStatus) => {
             checkProcess.running = true
